@@ -11,6 +11,12 @@ except Exception:
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.tools import tool
+try:
+    from typing import TypedDict, Annotated, Literal
+    from langgraph.graph import StateGraph, START, END
+    from langgraph.graph.message import add_messages
+except Exception:
+    pass
 # SQL disabled for RAG-only mode
 # from langchain_community.utilities import SQLDatabase
 # from sqlalchemy import create_engine
@@ -130,7 +136,7 @@ llm = ChatNebius(
 # Create a System Prompt
 dynamic_qsdd = get_qsdd_rules_prompt()
 system_prompt = (
-    "You are the  Senior Auditor. Operate purely on transcript evidence using the QSDD framework.\n\n"
+    "You are the KenexAI Senior Auditor. Operate purely on transcript evidence using the QSDD framework.\n\n"
     "### OPERATIONAL GUIDELINES:\n"
     "1. TRANSCRIPT ANALYSIS: Identify agent behaviors, customer emotions, and technical steps strictly from transcript context.\n"
     "2. QSDD COMPLIANCE: Evaluate against pillars:\n"
@@ -244,28 +250,31 @@ def get_qsdd_context() -> str:
     except Exception:
         return "No QSDD rules found."
 
-# SQL catalog disabled in RAG-only mode
-# def get_schema_catalog() -> str:
-#     try:
-#         import duckdb
-#         con = duckdb.connect("call_quality.duckdb")
-#         tables = [r[0] for r in con.execute(
-#             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'"
-#         ).fetchall()]
-#         if not tables:
-#             tables = [r[0] for r in con.execute("PRAGMA show_tables").fetchall()]
-#         lines = []
-#         for t in tables:
-#             try:
-#                 cols = con.execute(f"PRAGMA table_info('{t}')").fetchall()
-#                 colnames = [r[1] for r in cols]
-#                 lines.append(f"{t}: {', '.join(colnames)}")
-#             except Exception:
-#                 continue
-#         con.close()
-#         return "\n".join(lines)
-#     except Exception:
-#         return ""
+def get_schema_catalog() -> str:
+    try:
+        import duckdb
+        con = duckdb.connect("call_quality.duckdb")
+        tables_query = con.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()
+        tables = [r[0] for r in tables_query]
+        if not tables:
+            tables = [r[0] for r in con.execute("PRAGMA show_tables").fetchall()]
+        
+        lines = []
+        lines.append(f"table_count: {len(tables)}")
+        lines.append(f"tables: {', '.join(tables)}")
+        
+        for t in tables:
+            try:
+                cols = con.execute(f"PRAGMA table_info('{t}')").fetchall()
+                colnames = [r[1] for r in cols]
+                lines.append(f"table: {t}")
+                lines.append(f"columns: {', '.join(colnames)}")
+            except Exception:
+                continue
+        con.close()
+        return "\n".join(lines)
+    except Exception:
+        return ""
 
 last_tool_used = None
 last_sources = []
@@ -291,7 +300,7 @@ def transcript_rag(question: str) -> str:
     last_sources = []
     qsdd_ctx = get_qsdd_rules_prompt()
     system_text = (
-        "You are the  Manager Copilot. You have access to a Vector Store "
+        "You are the KenexAI Manager Copilot. You have access to a Vector Store "
         "containing call transcripts. Use the following QSDD Framework for audits:\n"
         "{qsdd_context}\n"
         "Always cite Call IDs from the metadata when possible."
@@ -402,28 +411,84 @@ def _extract_json(text: str):
                 continue
     return {}
 
-def ask_hybrid(query: str) -> dict:
-    global last_sources
-    global last_tool_used
-    last_tool_used = "rag"
-    try:
-        qsdd_ctx = get_qsdd_rules_prompt()
-        base_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system",
-                 "You are the KenexAI Senior Auditor. Operate ONLY on transcript evidence.\n"
-                 "QSDD:\n{qsdd}\n"
-                 "Always cite Call IDs when present."),
-                ("human", "{q}"),
-            ]
+try:
+    class State(TypedDict):
+        question: str
+        schema: str
+        route: str
+        sql_query: str
+        sql_results: str
+        sql_error: str
+        retries: int
+        rag_context: str
+        final_answer: str
+
+    def router_node(state: State) -> State:
+        question = state["question"]
+        prompt = f"Analyze the following question: '{question}'\nDoes it ask for metrics, counts, rankings, averages, totals, mathematical truths, or agent names based on structured data? If yes, return exactly 'sql'. Otherwise, if it asks about tone, reasons, transcript details, feelings, behavior, or direct conversation evidence, return exactly 'rag'. Return only a single word: 'sql' or 'rag'."
+        
+        msg = llm.invoke(prompt)
+        content = msg.content.strip().lower()
+        route = "sql" if "sql" in content else "rag"
+        
+        global last_tool_used
+        last_tool_used = route
+
+        state["route"] = route
+        return state
+
+    def generate_sql_node(state: State) -> State:
+        q = state["question"]
+        schema = state["schema"]
+        err = state.get("sql_error", "")
+        
+        prompt_txt_base = (
+            f"You are a DuckDB expert. Write DuckDB SQL to answer this question: {q}\n"
+            f"Schema:\n{schema}\n"
+            "IMPORTANT RULES:\n"
+            "1. The `quality_scores` table stores ONE ROW PER CRITERIA per call (usually 11 rows per call). When calculating the 'total number of calls', NEVER use COUNT(*). You MUST use COUNT(DISTINCT contact_id).\n"
+            "2. When calculating an agent's 'Average Quality Score', aggregate the score by computing: `SUM(score) / COUNT(DISTINCT contact_id)` from the `quality_scores` table. NEVER use AVG(score) directly on `quality_scores` because that averages individual criteria blocks (which have small weights like 0.05) instead of full calls.\n"
+            "3. If listing or referencing agents (or if the user asks for readable output), ALWAYS join with the `calls` table and select the `first_name` and `last_name` columns so you can display their actual names instead of just the agent_id.\n"
+            "4. Write ONLY the SQL code, without markdown formatting like ```sql."
         )
-        chain = base_prompt | llm
+
+        if err:
+            prompt_txt = f"There was an error running your previous SQL: {err}\nFix your SQL query.\n\n{prompt_txt_base}"
+        else:
+            prompt_txt = prompt_txt_base
+            
+        msg = llm.invoke(prompt_txt)
+        sql = msg.content.strip()
+        sql = sql.replace("```sql", "").replace("```", "").strip()
+        state["sql_query"] = sql
+        return state
+
+    def execute_sql_node(state: State) -> State:
+        sql = state.get("sql_query", "")
+        retries = state.get("retries", 0)
         try:
-            docs = retriever.invoke(query)
+            import duckdb
+            con = duckdb.connect("call_quality.duckdb")
+            res = con.execute(sql).fetchall()
+            cols = [desc[0] for desc in con.description] if con.description else []
+            con.close()
+            state["sql_results"] = f"Columns: {cols}\nData: {res}"
+            state["sql_error"] = ""
+        except Exception as e:
+            state["sql_error"] = str(e)
+            state["retries"] = retries + 1
+        return state
+
+    def retrieve_rag_node(state: State) -> State:
+        q = state["question"]
+        try:
+            docs = retriever.invoke(q)
         except Exception:
-            docs = retriever.get_relevant_documents(query)
+            docs = retriever.get_relevant_documents(q)
         top_docs = docs[:3] if isinstance(docs, list) else []
         ctx = "\n\n".join([getattr(d, "page_content", "") for d in top_docs])
+        
+        global last_sources
         sources = []
         for d in top_docs:
             if hasattr(d, "metadata"):
@@ -431,23 +496,99 @@ def ask_hybrid(query: str) -> dict:
                 cid = mid.get("call_id") or mid.get("contact_id")
                 if cid:
                     sources.append(cid)
-        msg = chain.invoke({"qsdd": qsdd_ctx, "q": f"{query}\n\nContext:\n{ctx}"})
-        answer = getattr(msg, "content", "") or str(msg)
-        answer = _ensure_citations(answer, sources)
-        return {"answer": answer, "sources": sources, "tool": "rag"}
+        last_sources = sources
+        state["rag_context"] = ctx
+        return state
+
+    def synthesize_node(state: State) -> State:
+        route = state["route"]
+        q = state["question"]
+        
+        if route == "sql":
+            results = state.get("sql_results", "No results calculated.")
+            prompt = f"You are the KenexAI Senior Auditor. Answer the user's question based on these SQL results from our DuckDB database.\nQuestion: {q}\nResults:\n{results}\nKeep it professional and concise."
+        else:
+            ctx = state.get("rag_context", "")
+            qsdd_ctx = get_qsdd_rules_prompt()
+            prompt = f"You are the KenexAI Senior Auditor. Answer the question based ONLY on the evidence provided in the context.\nOfficial QSDD Framework:\n{qsdd_ctx}\nQuestion: {q}\nContext:\n{ctx}\nAlways cite Call IDs when present in your answer."
+            
+        msg = llm.invoke(prompt)
+        state["final_answer"] = msg.content.strip()
+        return state
+
+    def route_next_after_router(state: State):
+        return "generate_sql_node" if state["route"] == "sql" else "retrieve_rag_node"
+
+    def route_next_after_sql(state: State):
+        err = state.get("sql_error", "")
+        retries = state.get("retries", 0)
+        if err and retries < 3:
+            return "generate_sql_node"
+        return "synthesize_node"
+
+
+    # Build the Hybrid LangGraph
+    workflow = StateGraph(State)
+    workflow.add_node("router_node", router_node)
+    workflow.add_node("generate_sql_node", generate_sql_node)
+    workflow.add_node("execute_sql_node", execute_sql_node)
+    workflow.add_node("retrieve_rag_node", retrieve_rag_node)
+    workflow.add_node("synthesize_node", synthesize_node)
+
+    workflow.add_edge(START, "router_node")
+    workflow.add_conditional_edges(
+        "router_node",
+        route_next_after_router,
+        {"generate_sql_node": "generate_sql_node", "retrieve_rag_node": "retrieve_rag_node"}
+    )
+    workflow.add_edge("generate_sql_node", "execute_sql_node")
+    workflow.add_conditional_edges(
+        "execute_sql_node",
+        route_next_after_sql,
+        {"generate_sql_node": "generate_sql_node", "synthesize_node": "synthesize_node"}
+    )
+    workflow.add_edge("retrieve_rag_node", "synthesize_node")
+    workflow.add_edge("synthesize_node", END)
+
+    app_graph = workflow.compile()
+except Exception as e:
+    print("Warning: unable to load LangGraph. Ensure it is installed.", e)
+    app_graph = None
+
+def ask_hybrid(query: str) -> dict:
+    global last_sources
+    global last_tool_used
+    last_sources = []
+    
+    schema = get_schema_catalog()
+    initial_state = {
+        "question": query,
+        "schema": schema,
+        "route": "",
+        "sql_query": "",
+        "sql_results": "",
+        "sql_error": "",
+        "retries": 0,
+        "rag_context": "",
+        "final_answer": ""
+    }
+    
+    try:
+        final_state = app_graph.invoke(initial_state)
+        ans = final_state.get("final_answer", "No answer generated.")
+        route_used = final_state.get("route", "rag")
+        
+        if route_used == "rag":
+            ans = _ensure_citations(ans, last_sources)
+            
+        return {"answer": ans, "sources": last_sources, "tool": route_used}
     except Exception as e:
-        try:
-            resp = rag_chain.invoke({"input": query})
-            ans = resp.get("answer", "")
-            srcs = [d.metadata.get("call_id") for d in resp.get("context", []) if hasattr(d, "metadata")]
-            return {"answer": ans or f"RAG error: {e}", "sources": srcs, "tool": "rag"}
-        except Exception:
-            return {"answer": f"Unable to complete the request: {e}", "sources": [], "tool": "rag"}
+        return {"answer": f"Hybrid graph error: {e}", "sources": [], "tool": ""}
 
 if __name__ == "__main__":
     # Simple CLI test
     test_query = "What common issues do customers report?"
     print(f"Testing with query: {test_query}")
-    result = ask_bot(test_query)
+    result = ask_hybrid(test_query)
     print(f"Answer: {result['answer']}")
     print(f"Sources: {result['sources']}")
