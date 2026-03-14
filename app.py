@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from chat_backend import ask_hybrid
+from chat_backend import ask_hybrid, ask_hybrid_stream, ask_hybrid_stream
 
 # --- Page Config ---
 st.set_page_config(page_title="KenexAI Quality Analyzer", layout="wide")
@@ -87,6 +87,15 @@ if page == "Manager Dashboard":
         # Display chat history
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
+                if message["role"] == "assistant" and message.get("state"):
+                    with st.expander(" Show thinking", expanded=False):
+                        st.markdown(f"**Routing Engine:** Decided to use {message['state'].get('route', 'unknown')}")
+                        if message["state"].get("route") == "sql":
+                            st.markdown("**SQL Query Executed:**")
+                            st.code(message["state"].get("sql_query", ""), language="sql")
+                        if message["state"].get("sql_error"):
+                            st.markdown("**Error Handled:**")
+                            st.error(message["state"].get("sql_error"))
                 st.markdown(message["content"])
                 if message["role"] == "assistant" and "sources" in message:
                     with st.expander("🔍 See Sources (Call IDs)"):
@@ -95,15 +104,14 @@ if page == "Manager Dashboard":
         
         # Chat input
         if prompt := st.chat_input("e.g., Why are customers calling about blue screens?"):
-            # Display user message
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            # Append user message to history
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            
-            # Get response from AI
-            with st.chat_message("assistant"):
-                with st.spinner("Searching transcripts via Nebius AI..."):
+            with mgr_container:
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                # Append user message to history
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                
+                # Get response from AI
+                with st.chat_message("assistant"):
                     result = ask_hybrid(prompt)
                     response = result.get("answer", "")
                     sources = result.get("sources", [])
@@ -139,33 +147,78 @@ elif page == "AI Copilot (Full Screen)":
         })
 
     with tabs[0]:
-        for message in st.session_state.copilot_messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
-                if message["role"] == "assistant" and "sources" in message and message["sources"]:
-                    st.caption(f"Sources attached: {len(message['sources'])}")
-                if debug_tool and message.get("tool"):
-                    st.caption(f"Tool: {message['tool'].upper()}")
+        chat_container = st.container()
+        
+        with chat_container:
+            for message in st.session_state.copilot_messages:
+                with st.chat_message(message["role"]):
+                    if message["role"] == "assistant" and message.get("state"):
+                        with st.expander(" Show thinking", expanded=False):
+                            st.markdown(f"**Routing Engine:** Decided to use {message['state'].get('route', 'unknown')}")
+                            if message["state"].get("route") == "sql":
+                                st.markdown("**SQL Query Executed:**")
+                                st.code(message["state"].get("sql_query", ""), language="sql")
+                            if message["state"].get("sql_error"):
+                                st.markdown("**Error Handled:**")
+                                st.error(message["state"].get("sql_error"))
+                    st.markdown(message["content"])
+                    if message["role"] == "assistant" and "sources" in message and message["sources"]:
+                        st.caption(f"Sources attached: {len(message['sources'])}")
+                    if debug_tool and message.get("tool"):
+                        st.caption(f"Tool: {message['tool'].upper()}")
 
         if prompt := st.chat_input("Type your question for the Auditor Copilot..."):
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            st.session_state.copilot_messages.append({"role": "user", "content": prompt})
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                st.session_state.copilot_messages.append({"role": "user", "content": prompt})
 
-            with st.chat_message("assistant"):
-                with st.spinner("Analyzing with the Hybrid Orchestrator..."):
-                    result = ask_hybrid(prompt)
-                    response = result.get("answer", "")
-                    sources = result.get("sources", [])
-                    tool_used = result.get("tool", "")
-                    st.markdown(response)
+                with st.chat_message("assistant"):
+                    thought_container = st.status(" Analyzing with Orchestrator...", expanded=True)
+                    final_result = {}
+                    state = {}
+                
+                    for update in ask_hybrid_stream(prompt):
+                        if update["type"] == "step":
+                            node = update["node"]
+                            node_state = update["state"]
+                            state.update(node_state)
+                            if node == "router_node":
+                                thought_container.write(f"** Route Selected:** {node_state.get('route')}")
+                            elif node == "generate_sql_node":
+                                thought_container.write(f"** Generated SQL:**")
+                                thought_container.code(node_state.get("sql_query"), language="sql")
+                            elif node == "execute_sql_node":
+                                if node_state.get("sql_error"):
+                                    thought_container.error(f"** SQL Error:** {node_state.get('sql_error')}")
+                                else:
+                                    thought_container.success(f"** SQL Exectued Successfully**")
+                            elif node == "retrieve_rag_node":
+                                thought_container.write(f"** Retrieved Context from Vector Store**")
+                            elif node == "synthesize_node":
+                                thought_container.write(f"** Synthesizing final response...**")
+                        elif update["type"] == "final":
+                            final_result = update
+                            state = update.get("state", state)
+                            thought_container.update(label=" Analysis Complete", state="complete", expanded=False)
+                        elif update["type"] == "error":
+                            thought_container.error(f" Error: {update['error']}")
+                            thought_container.update(label=" Analysis Failed", state="error", expanded=False)
+
+                    response = final_result.get("answer", "") if final_result else ""
+                    sources = final_result.get("sources", []) if final_result else []
+                    tool_used = final_result.get("tool", "") if final_result else ""
+                
+                    st.write_stream((char for char in response))
+
                     if debug_tool and tool_used:
                         st.caption(f"Tool: {tool_used.upper()}")
-            st.session_state.copilot_messages.append({
+                st.session_state.copilot_messages.append({
                 "role": "assistant",
                 "content": response,
                 "sources": list(set(sources)),
-                "tool": tool_used
+                "tool": tool_used,
+                "state": state
             })
 
     with tabs[1]:

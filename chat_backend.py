@@ -252,27 +252,8 @@ def get_qsdd_context() -> str:
 
 def get_schema_catalog() -> str:
     try:
-        import duckdb
-        con = duckdb.connect("call_quality.duckdb")
-        tables_query = con.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()
-        tables = [r[0] for r in tables_query]
-        if not tables:
-            tables = [r[0] for r in con.execute("PRAGMA show_tables").fetchall()]
-        
-        lines = []
-        lines.append(f"table_count: {len(tables)}")
-        lines.append(f"tables: {', '.join(tables)}")
-        
-        for t in tables:
-            try:
-                cols = con.execute(f"PRAGMA table_info('{t}')").fetchall()
-                colnames = [r[1] for r in cols]
-                lines.append(f"table: {t}")
-                lines.append(f"columns: {', '.join(colnames)}")
-            except Exception:
-                continue
-        con.close()
-        return "\n".join(lines)
+        with open('schema_context.txt', 'r', encoding='utf-8') as f:
+            return f.read()
     except Exception:
         return ""
 
@@ -425,8 +406,31 @@ try:
 
     def router_node(state: State) -> State:
         question = state["question"]
-        prompt = f"Analyze the following question: '{question}'\nDoes it ask for metrics, counts, rankings, averages, totals, mathematical truths, or agent names based on structured data? If yes, return exactly 'sql'. Otherwise, if it asks about tone, reasons, transcript details, feelings, behavior, or direct conversation evidence, return exactly 'rag'. Return only a single word: 'sql' or 'rag'."
-        
+        prompt = f"""You are an expert routing AI for KenexAI.
+Your job is to route the user's query to either 'sql' or 'rag'.
+
+DATA SOURCES:
+- 'sql': A DuckDB database containing tables like 'agents', 'quality_scores', and 'call_summary' (which contains summaries, ai_recommendations, issue_category, issue_description, resolution, sentiment_agent, sentiment_customer, and key_moments for EVERY call).
+- 'rag': A vector database of raw, unstructured transcript text chunks.
+
+STRICT ROUTING RULES:
+1. If the query includes a specific Call ID (a long number like 624279721699), you MUST route to 'sql'. The 'call_summary' table has all the text details needed to answer.
+2. If the query asks for metrics, 'recommendations', 'resolutions', 'issue_category', 'issue_description', 'sentiment', or 'scores', route to 'sql'.
+3. Only use 'rag' if the user asks for general emotional tone or abstract transcript quotes AND does not provide a specific Call ID.
+
+EXAMPLES:
+Query: "Look up call 624279721699. What was the AI's recommendation and what took so long?"
+Route: sql
+
+Query: "Find a call where the customer was angry about a blue screen."
+Route: rag
+
+Query: "What is the most frequently failed criteria?"
+Route: sql
+
+Query: {{question}}
+Route (ONLY output 'sql' or 'rag'):""".format(question=question)
+
         msg = llm.invoke(prompt)
         content = msg.content.strip().lower()
         route = "sql" if "sql" in content else "rag"
@@ -581,9 +585,81 @@ def ask_hybrid(query: str) -> dict:
         if route_used == "rag":
             ans = _ensure_citations(ans, last_sources)
             
-        return {"answer": ans, "sources": last_sources, "tool": route_used}
+        return {"answer": ans, "sources": last_sources, "tool": route_used, "state": final_state}
     except Exception as e:
-        return {"answer": f"Hybrid graph error: {e}", "sources": [], "tool": ""}
+        return {"answer": f"Hybrid graph error: {e}", "sources": [], "tool": "", "state": {}}
+
+
+def ask_hybrid_stream(query: str):
+    global last_sources
+    global last_tool_used
+    last_sources = []
+
+    schema = get_schema_catalog()
+    initial_state = {
+        "question": query,
+        "schema": schema,
+        "route": "",
+        "sql_query": "",
+        "sql_results": "",
+        "sql_error": "",
+        "retries": 0,
+        "rag_context": "",
+        "final_answer": ""
+    }
+
+    try:
+        final_state = initial_state.copy()
+        for output in app_graph.stream(initial_state):
+            for node_name, state_update in output.items():
+                final_state.update(state_update)
+                yield {"type": "step", "node": node_name, "state": state_update}
+        
+        ans = final_state.get("final_answer", "No answer generated.")
+        route_used = final_state.get("route", "rag")
+
+        if route_used == "rag":
+            ans = _ensure_citations(ans, last_sources)
+
+        yield {"type": "final", "answer": ans, "sources": last_sources, "tool": route_used, "state": final_state}
+    except Exception as e:
+        yield {"type": "error", "error": str(e)}
+
+
+def ask_hybrid_stream(query: str):
+    global last_sources
+    global last_tool_used
+    last_sources = []
+
+    schema = get_schema_catalog()
+    initial_state = {
+        "question": query,
+        "schema": schema,
+        "route": "",
+        "sql_query": "",
+        "sql_results": "",
+        "sql_error": "",
+        "retries": 0,
+        "rag_context": "",
+        "final_answer": ""
+    }
+
+    try:
+        final_state = initial_state.copy()
+        for output in app_graph.stream(initial_state):
+            for node_name, state_update in output.items():
+                final_state.update(state_update)
+                yield {"type": "step", "node": node_name, "state": state_update}
+        
+        ans = final_state.get("final_answer", "No answer generated.")
+        route_used = final_state.get("route", "rag")
+
+        if route_used == "rag":
+            ans = _ensure_citations(ans, last_sources)
+
+        yield {"type": "final", "answer": ans, "sources": last_sources, "tool": route_used, "state": final_state}
+    except Exception as e:
+        yield {"type": "error", "error": str(e)}
 
 if __name__ == "__main__":
     # Simple CLI test

@@ -1,0 +1,34 @@
+table_count: 8
+tables: agents, ai_summary, calls, call_summary, data_quality_log, qsdd_framework, quality_scores, transcripts
+
+table: agents
+description: Stores aggregate agent metrics like overall handle time and total calls.
+columns: agent_id, team_name, skill_name, total_calls, avg_quality_score, avg_handle_time, last_call_date, updated_at
+
+table: ai_summary
+description: Stores AI-generated overall summaries, strengths, and improvements for each call.
+columns: contact_id, agent_id, summary, strengths, improvements, failed_criteria, model_name, version, created_at
+
+table: calls
+description: Core table containing details for each call: who made it, when, duration, and agent_id. NOTE: first_name and last_name represent the agent's name, not the customer.
+columns: contact_id, agent_id, campaign_name, skill_name, team_name, first_name, last_name, from_addr, to_addr, contact_start, total_duration_sec, agent_seconds, in_queue_seconds, hold_seconds, acw_seconds, hold_count, is_abandoned, is_outbound, service_level_flag, state, media_type_name, is_simulated, created_at
+
+table: call_summary
+description: Contains the structured summary, sentiment analysis (agent and customer), and issue category for calls.
+columns: contact_id, issue_category, issue_description, resolution, sentiment_agent, sentiment_customer, overall_score, key_moments, ai_recommendation, created_at
+
+table: data_quality_log
+description: Logs system or required data errors.
+columns: log_id, contact_id, field_name, issue_type, issue_description, severity, logged_at
+
+table: qsdd_framework
+description: The active QSDD evaluation rubric (what to check, weights, passing criteria).
+columns: framework_id, section_name, criteria_name, section_weight, criteria_weight, effective_weight, enabled, what_to_check, when_to_check, good_example, bad_example, scoring_method, updated_at
+
+table: quality_scores
+description: The actual QA scores, containing ONE ROW PER criteria evaluated for EACH call. So 1 call has many rows here. Use COUNT(DISTINCT contact_id) to count calls.
+columns: score_id, contact_id, agent_id, section_name, criteria_name, score, passed, reasoning, scored_by, evaluated_at
+
+table: transcripts
+description: The textual transcript and talk ratios of the call.
+columns: transcript_id, contact_id, agent_text, customer_text, full_text, agent_word_count, customer_word_count, talk_ratio, created_at

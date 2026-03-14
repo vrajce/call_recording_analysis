@@ -2,7 +2,7 @@ import duckdb
 
 def main():
     con = duckdb.connect("call_quality.duckdb")
-    ans = con.execute("SELECT * from call_summary limit 2")
+    ans = con.execute("SELECT * from call_summary limit 6")
 
     print(ans.fetchall())
     con.close()
