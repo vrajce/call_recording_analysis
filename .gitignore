@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+venv/
+.venv/
+env/
+
+# Secrets / local configs
+.env
+.env.local
+
+# Data files
+*.duckdb
+*.db
+*.sqlite
+
+# Vector stores and cache
+advanced_vector_store/
+vector_store/
+parent_records/
+.cache/
+
+# Streamlit
+.streamlit/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
