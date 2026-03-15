@@ -1,0 +1,13 @@
+criteria_name,section_name,total,passed_count,pass_rate_pct
+Recap Provided,Section 4: Call Closing,64,13.0,20.3
+User Authentication,Section 1: Offer Assistance,64,24.0,37.5
+Resolution Provided,Section 2: Problem Resolution,64,27.0,42.2
+Issue Confirmation,Section 4: Call Closing,64,28.0,43.8
+Escalation Handling,Section 2: Problem Resolution,64,36.0,56.3
+Greeting,Section 1: Offer Assistance,64,40.0,62.5
+Offer Assistance,Section 1: Offer Assistance,64,40.0,62.5
+Professional Farewell,Section 4: Call Closing,64,40.0,62.5
+Hold Protocol,Section 2: Problem Resolution,64,41.0,64.1
+Clear Explanation,Section 3: Communication Quality,64,51.0,79.7
+Active Listening,Section 2: Problem Resolution,64,53.0,82.8
+Professional Tone,Section 3: Communication Quality,64,57.0,89.1

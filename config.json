@@ -1,0 +1,230 @@
+{
+  "project_name": "AI-Powered Call Quality Analyzer",
+  "version": "1.0",
+  "base_path": "/content/drive/MyDrive/KenexAI/call_quality_analyzer",
+  "paths": {
+    "raw_calls": "/content/drive/MyDrive/KenexAI/call_quality_analyzer/data/raw/calls.json",
+    "raw_transcripts": "/content/drive/MyDrive/KenexAI/call_quality_analyzer/data/raw/transcripts.json",
+    "processed": "/content/drive/MyDrive/KenexAI/call_quality_analyzer/data/processed/",
+    "models": "/content/drive/MyDrive/KenexAI/call_quality_analyzer/models/",
+    "vector_store": "/content/drive/MyDrive/KenexAI/call_quality_analyzer/vector_store/"
+  },
+  "simulator": {
+    "interval_seconds": 60,
+    "batch_size": 5
+  },
+  "quality_framework": {
+    "Section 1: Offer Assistance": {
+      "weight": 0.3,
+      "enabled": true,
+      "criteria": {
+        "Greeting": {
+          "weight": 0.33,
+          "enabled": true,
+          "when": "Always \u2014 at the very start of call",
+          "what": "Agent must say the company/account name AND their own name",
+          "good_example": "Thank you for calling Customer Service Desk, my name is John",
+          "bad_example": "What's up? Hey what can I help you with?",
+          "check_keywords": [
+            "thank you for calling",
+            "my name is",
+            "this is"
+          ],
+          "scoring": "binary"
+        },
+        "User Authentication": {
+          "weight": 0.33,
+          "enabled": true,
+          "when": "Always \u2014 before discussing the issue",
+          "what": "Agent must verify User ID or First & Last Name AND get a callback number",
+          "good_example": "Can I have your User ID or first and last name? Can I get a callback number?",
+          "bad_example": "Who is this? Thanks what's up?",
+          "check_keywords": [
+            "user id",
+            "first and last name",
+            "callback",
+            "call you back",
+            "number to reach"
+          ],
+          "scoring": "binary"
+        },
+        "Offer Assistance": {
+          "weight": 0.34,
+          "enabled": true,
+          "when": "Always \u2014 after authentication",
+          "what": "Agent must thank user, call them by name, and offer to help",
+          "good_example": "Thank you for that information Lucas, how can I help you today?",
+          "bad_example": "Silence... waiting for user to explain",
+          "check_keywords": [
+            "thank you",
+            "how can i help",
+            "how may i assist",
+            "what can i help"
+          ],
+          "scoring": "binary"
+        }
+      }
+    },
+    "Section 2: Problem Resolution": {
+      "weight": 0.35,
+      "enabled": true,
+      "criteria": {
+        "Active Listening": {
+          "weight": 0.25,
+          "enabled": true,
+          "when": "Throughout the call",
+          "what": "Agent asks clarifying questions and confirms understanding",
+          "good_example": "Just to confirm, you're saying the device is freezing when you open emails?",
+          "bad_example": "Ok. So restart it.",
+          "check_keywords": [
+            "just to confirm",
+            "so what you're saying",
+            "to clarify",
+            "i understand"
+          ],
+          "scoring": "binary"
+        },
+        "Resolution Provided": {
+          "weight": 0.35,
+          "enabled": true,
+          "when": "Before closing the call",
+          "what": "Agent provided a clear solution or next steps",
+          "good_example": "I've resolved the issue. Your files are now on OneDrive.",
+          "bad_example": "I don't know what's wrong, call back later.",
+          "check_keywords": [
+            "resolved",
+            "fixed",
+            "you should now",
+            "that should work",
+            "i've completed"
+          ],
+          "scoring": "binary"
+        },
+        "Hold Protocol": {
+          "weight": 0.2,
+          "enabled": true,
+          "when": "Whenever placing customer on hold",
+          "what": "Agent asked permission before hold and thanked after",
+          "good_example": "May I place you on a brief hold? ... Thank you for holding.",
+          "bad_example": "Hold on. [places on hold with no warning]",
+          "check_keywords": [
+            "place you on hold",
+            "brief hold",
+            "thank you for holding",
+            "thank you for your patience"
+          ],
+          "scoring": "binary"
+        },
+        "Escalation Handling": {
+          "weight": 0.2,
+          "enabled": true,
+          "when": "When issue cannot be resolved",
+          "what": "Agent correctly escalated or set expectations for follow-up",
+          "good_example": "I'll escalate this. You can expect a call within 24 hours.",
+          "bad_example": "I can't help you with that. Goodbye.",
+          "check_keywords": [
+            "escalate",
+            "reach out to",
+            "internal team",
+            "level 2",
+            "follow up",
+            "get back to you"
+          ],
+          "scoring": "binary"
+        }
+      }
+    },
+    "Section 3: Communication Quality": {
+      "weight": 0.2,
+      "enabled": true,
+      "criteria": {
+        "Professional Tone": {
+          "weight": 0.5,
+          "enabled": true,
+          "when": "Throughout the entire call",
+          "what": "Agent maintained calm, professional, empathetic tone",
+          "good_example": "I completely understand how frustrating that must be.",
+          "bad_example": "Well that's not my problem.",
+          "check_keywords": [
+            "understand",
+            "apologize",
+            "i'm sorry",
+            "certainly",
+            "of course",
+            "absolutely"
+          ],
+          "scoring": "llm_evaluated"
+        },
+        "Clear Explanation": {
+          "weight": 0.5,
+          "enabled": true,
+          "when": "When providing instructions or solutions",
+          "what": "Agent explained steps in simple, clear language",
+          "good_example": "Click the OneDrive icon, then right-click and select Settings.",
+          "bad_example": "Just do the thing with the sync folder config.",
+          "check_keywords": [
+            "click",
+            "go to",
+            "you will see",
+            "select",
+            "open",
+            "navigate"
+          ],
+          "scoring": "llm_evaluated"
+        }
+      }
+    },
+    "Section 4: Call Closing": {
+      "weight": 0.15,
+      "enabled": true,
+      "criteria": {
+        "Issue Confirmation": {
+          "weight": 0.4,
+          "enabled": true,
+          "when": "Before ending the call",
+          "what": "Agent confirmed resolution and asked if anything else needed",
+          "good_example": "Is there anything else I can help you with today?",
+          "bad_example": "Okay bye.",
+          "check_keywords": [
+            "anything else",
+            "is there anything",
+            "all set",
+            "you're all good"
+          ],
+          "scoring": "binary"
+        },
+        "Professional Farewell": {
+          "weight": 0.3,
+          "enabled": true,
+          "when": "At the very end of the call",
+          "what": "Agent thanked customer and gave a professional goodbye",
+          "good_example": "Thank you for calling, have a great day!",
+          "bad_example": "[hangs up without goodbye]",
+          "check_keywords": [
+            "thank you for calling",
+            "have a great",
+            "have a good",
+            "thank you for your time"
+          ],
+          "scoring": "binary"
+        },
+        "Recap Provided": {
+          "weight": 0.3,
+          "enabled": true,
+          "when": "During call closing",
+          "what": "Agent briefly summarized what was done during the call",
+          "good_example": "Today I helped you recover your BitLocker key and free up C drive space.",
+          "bad_example": "Okay we're done.",
+          "check_keywords": [
+            "today i helped",
+            "what we did",
+            "to summarize",
+            "so we",
+            "i've"
+          ],
+          "scoring": "llm_evaluated"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# Large model files (regenerate with ml/train_models.py)
+# models/*.pkl
+
+# Raw data (too large + contains company data)
+data/raw/
+
+# Database (regenerate with etl/etl_pipeline.py)
+*.duckdb
+
+# IDE
+.vscode/
+.idea/
+*.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,37 @@
+
+ETL VERIFICATION REPORT
+Generated: 2026-03-14 13:09:19.009405
+========================================
+
+RAW DATA
+--------
+Call detail files    : 45
+Transcript files     : 45
+Matched pairs        : 45
+
+DATABASE TABLES
+---------------
+calls                : 45 rows
+transcripts          : 45 rows (metadata only)
+quality_scores       : 540 rows
+call_summary         : 45 rows
+agents               : 28 rows
+data_quality_log     : 49 rows
+
+DATA QUALITY ISSUES
+-------------------
+Total issues logged  : 49
+High severity        : 1
+Medium severity      : 3
+Low severity         : 45
+
+PROCESSED FILES SAVED
+----------------------
+calls_clean.csv
+transcripts_meta.csv
+quality_scores.csv
+call_summary.csv
+agents.csv
+data_quality_log.csv
+
+STATUS: ETL COMPLETE ✅
