@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+<<<<<<< HEAD
 *.py[cod]
 *.pyo
 .env
@@ -19,6 +20,37 @@ data/raw/
 .vscode/
 .idea/
 *.ipynb_checkpoints/
+=======
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+venv/
+.venv/
+env/
+
+# Secrets / local configs
+.env
+.env.local
+
+# Data files
+*.duckdb
+*.db
+*.sqlite
+
+# Vector stores and cache
+advanced_vector_store/
+vector_store/
+parent_records/
+.cache/
+
+# Streamlit
+.streamlit/
+
+# Logs
+*.log
+>>>>>>> d2773213e35d80c736926ee45573d6fbf8bc067f
 
 # OS
 .DS_Store

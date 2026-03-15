@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 duckdb>=0.9.0
 pandas>=2.0.0
 numpy>=1.24.0
@@ -16,3 +17,30 @@ langchain>=0.1.0
 langchain-community>=0.0.20
 matplotlib>=3.7.0
 python-dotenv>=1.0.0
+=======
+# --- UI & Environment --- 
+streamlit>=1.30.0 
+python-dotenv>=1.0.0 
+pandas>=2.2.0
+plotly>=5.18.0
+
+# --- Core AI Framework --- 
+langchain>=0.1.13 
+langchain-core>=0.1.33 
+langchain-community>=0.0.29 
+langchain-text-splitters>=0.0.1
+
+# --- Nebius AI Integration --- 
+langchain-nebius>=0.1.0 
+
+# --- Databases (Vector & SQL) --- 
+chromadb>=0.4.24 
+duckdb>=0.10.0 
+duckdb-engine>=0.11.2 
+SQLAlchemy>=2.0.29 
+
+# --- Utilities --- 
+tiktoken>=0.6.0 
+pydantic>=2.6.4
+tqdm>=4.66.0
+>>>>>>> d2773213e35d80c736926ee45573d6fbf8bc067f
