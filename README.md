@@ -1,4 +1,4 @@
-# AI-Powered Call Quality Analyzerr
+# AI-Powered Call Quality Analyzer
 
 Hackathon Project — KrenexAI
 
